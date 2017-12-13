@@ -4,6 +4,7 @@ import Linear
 import Control.Lens
 import Control.Monad
 import Control.Monad.State
+import System.FilePath
 import qualified Graphics.Rendering.OpenGL as GL
 import           Graphics.Rendering.OpenGL (($=))
 import qualified Graphics.GLUtil as U
@@ -17,6 +18,8 @@ import Data.IntMap (IntMap, (!))
 import qualified Data.IntMap as IM
 
 import Foreign.Ptr (nullPtr, plusPtr)
+
+import Config
 
 data GfxObj = GfxObj { _vao      :: GL.VertexArrayObject,
                        _program  :: GL.Program,
@@ -72,7 +75,7 @@ gfxFromList objs = GfxState (IM.fromList $ zip [0..] objs) (length objs)
 
 createCube :: GL.Program -> GL.TextureObject -> V3 Float -> IO GfxObj
 createCube prog text pos = do
-    vbo <- U.makeBuffer GL.ArrayBuffer cubeVerts -- UNUSED vbo: fix
+    vbo <- U.makeBuffer GL.ArrayBuffer cubeVerts
     vao <- U.makeVAO $ do
         GL.vertexAttribPointer (GL.AttribLocation 0) $= (GL.ToFloat, GL.VertexArrayDescriptor 3 GL.Float 20 nullPtr)
         GL.vertexAttribArray (GL.AttribLocation 0) $= GL.Enabled
@@ -102,7 +105,7 @@ updateObj state ref mmat v = do
 
 loadTexture :: FilePath -> IO GL.TextureObject
 loadTexture path = do
-    text <- JT.readTexture path
+    text <- JT.readTexture $ texturePath </> path
 
     let Right tobj = text
 
@@ -112,6 +115,12 @@ loadTexture path = do
     GL.textureWrapMode GL.Texture2D GL.T $= (GL.Repeated, GL.Repeat)
     GL.textureBinding GL.Texture2D $= Nothing
     return tobj
+
+loadShader :: FilePath -> IO GL.Program
+loadShader name = do
+    vs <- U.loadShader GL.VertexShader $ shaderPath </> name `addExtension` "vs"
+    fs <- U.loadShader GL.FragmentShader $ shaderPath </> name `addExtension` "fs"
+    U.linkShaderProgram [vs, fs]
 
 cubeVerts :: [Float]
 cubeVerts = [-0.5, -0.5, -0.5,  0.0, 0.0,

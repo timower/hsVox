@@ -1,0 +1,5 @@
+- fix camera -> only move in x z direction and use up/down to move in y direction
+- fix camera -> prevent pitch above/below +- 90° (use custom camera class)
+- terrain: use some https://hackage.haskell.org/package/Noise
+- chunks: add block atlas, use material id to select texture coords
+- frustum culling

@@ -1,10 +1,12 @@
 module Chunk where
 
-import qualified Graphics.Rendering.OpenGL as GL
 import Linear
 import Control.Lens
 
 import Data.Word (Word8)
+import Control.Monad.State
+
+import qualified Data.Map as M
 
 import Data.Vector.Storable (Vector, (!))
 import qualified Data.Vector.Storable as V
@@ -12,14 +14,15 @@ import qualified Data.Vector.Generic as GV
 import qualified Data.Vector.Fusion.Bundle as Bundle
 import qualified Data.Vector.Fusion.Stream.Monadic as S
 
-import Data.Map (Map)
-import qualified Data.Map as M
+import qualified Graphics.Rendering.OpenGL as GL
 
-type ChunkPos = V3 Int
--- TODO: import graphics, move stuff from Lib here, rename int to GfxRef
-data ChunkState = ChunkState { _chunks :: Map ChunkPos Int}
+import qualified Graphics.GLUtil as U
+import qualified Graphics.GLUtil.Camera3D as C3D
 
-makeLenses ''ChunkState
+import Data.List ((\\))
+
+import State
+import Graphics
 
 type Terrain = Vector Word8
 
@@ -41,6 +44,49 @@ chunkSize = 16
 
 loadDist :: Int
 loadDist = 1
+
+initChunks :: StateT GfxState IO ChunkState
+initChunks = do
+    prog <- liftIO $ loadShader "simple"
+
+    let cps = [V3 x y z | x <- [-loadDist..loadDist], y <- [-loadDist..loadDist], z <- [-loadDist..loadDist]]
+    texture <- liftIO $ loadTexture "crate.png"
+    cGfxObjs <- liftIO $ mapM (loadChunk prog texture) cps
+    gfx1 <- get
+    let (refs, gfx2) = runState (mapM addGfxObj cGfxObjs) gfx1
+    put gfx2
+    return (ChunkState $ M.fromList $ zip cps refs)
+  where
+      loadChunk :: GL.Program -> GL.TextureObject -> V3 Int -> IO GfxObj
+      loadChunk p t cpos = createObj p t (fmap (fromIntegral . (*chunkSize)) cpos) $ buildChunk $ createTerrain cpos
+
+
+
+updateChunks :: StateT GameState IO ()
+updateChunks = do
+    cam <- use $ gfxState.camera
+    let (V3 px py pz) = fmap (flip div chunkSize . floor) $ C3D.location cam
+    let shouldBeLoaded = [V3 x y z | x <- [px-loadDist..px+loadDist], y <- [py-loadDist..py+loadDist], z <- [pz-loadDist..pz+loadDist]]
+    -- make list of gfxRefs from chunks that are too far
+    cs <- use $ chunkState.chunks
+    let loaded = M.keys cs
+    let toofar = loaded \\ shouldBeLoaded
+    let gfxRefs = (map (cs M.!) toofar) :: [Int]
+    let cs' = foldr M.delete cs toofar
+    -- update chunks that should be loaded with these gfxRefs
+    let toload = shouldBeLoaded \\ loaded
+    gstate <- use gfxState
+    (cs'', gfxState') <- liftIO $ foldM updateCs (cs', gstate) $ zip toload gfxRefs
+    chunkState.chunks .= cs''
+    gfxState .= gfxState'
+    return ()
+  where
+      updateCs :: (M.Map ChunkPos Int, GfxState) -> (ChunkPos, Int) -> IO (M.Map ChunkPos Int, GfxState)
+      updateCs (cmap, gfx) (p, r) = do
+        let drawPos = fmap (fromIntegral . (*chunkSize)) p
+        let mmat = mkTransformationMat identity drawPos
+        gfx' <- updateObj gfx r mmat $ buildChunk $ createTerrain p
+        return (M.insert p r cmap, gfx')
 
 createTerrain :: V3 Int -> Terrain
 createTerrain (V3 cx cy cz) = V.generate (chunkSize*chunkSize*chunkSize) gen

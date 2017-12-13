@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib, Chunk, Graphics
+  exposed-modules:     Lib, Chunk, Graphics, State, Input, Config
   build-depends:       base >= 4.7 && < 5,
                        GLFW-b == 1.*,
                        OpenGL >= 3,
